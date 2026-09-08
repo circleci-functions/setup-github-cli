@@ -1,4 +1,6 @@
-// Command setup-github-cli installs the GitHub CLI (gh) onto PATH.
+// Command setup-github-cli installs the GitHub CLI (gh) and, with --configure,
+// authenticates it with a Personal Access Token: it exports the token into
+// $BASH_ENV for later steps and registers gh as git's credential helper.
 //
 // Supported platforms: linux and darwin, on amd64 and arm64.
 package main
@@ -24,6 +26,9 @@ type cli struct {
 	InstallDir string `name:"install-dir" help:"Base directory for GitHub CLI installs." default:"~/.cache/setup-github-cli"`
 	BinDir     string `name:"bin-dir" help:"Link gh into this directory instead of discovering one on PATH." hidden:"" default:""`
 	BaseURL    string `name:"base-url" help:"Override the GitHub base URL releases are fetched from." hidden:"" default:""`
+	Configure  bool   `help:"After installing, authenticate gh with a Personal Access Token and configure it for git." default:"false"`
+	Token      string `help:"Name of the environment variable holding the GitHub token. Only used with --configure." default:"GITHUB_TOKEN"`
+	Hostname   string `help:"GitHub hostname to authenticate against. Only used with --configure." default:"github.com"`
 }
 
 func (c *cli) Run(ctx context.Context) error {
@@ -42,6 +47,15 @@ func (c *cli) Run(ctx context.Context) error {
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "setup-github-cli: gh installed at %s\n", ghBin)
+
+	if c.Configure {
+		if err := ghcli.Configure(ctx, ghBin, ghcli.ConfigureOptions{
+			Hostname:    c.Hostname,
+			TokenEnvVar: c.Token,
+		}); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -64,7 +78,7 @@ func run(ctx context.Context, client *sdk.Client) error {
 	var flags cli
 	kCtx := kong.Parse(&flags,
 		kong.Name("setup-github-cli"),
-		kong.Description("Install the GitHub CLI (gh).\n\nExample:\n  circleci run github.com/circleci-functions/setup-github-cli@<version> -- --version 2.37.0"),
+		kong.Description("Install the GitHub CLI (gh), optionally authenticating it with a Personal Access Token.\n\nExample:\n  circleci run github.com/circleci-functions/setup-github-cli@<version> -- --version 2.37.0"),
 		kong.UsageOnError(),
 		functionyaml.Embed(),
 	)
