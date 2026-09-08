@@ -1,0 +1,143 @@
+version: 2.1
+
+orbs:
+  toolkit: https://raw.githubusercontent.com/circleci-functions/toolkit/refs/heads/main/orbs/toolkit.yml
+
+parameters:
+  gh-version:
+    type: string
+    default: "2.62.0"
+    description: >-
+      GitHub CLI version the acceptance and smoke tests install.
+
+executors:
+  go:
+    docker:
+      - image: cimg/go:1.26
+  # bare-smoke execs the binary `build` cross-compiled, on an image with no Go.
+  base:
+    docker:
+      - image: cimg/base:stable
+
+jobs:
+  test:
+    executor: go
+    steps:
+      - checkout
+      - toolkit/private-mod-init
+      - restore_cache:
+          keys:
+            - setup-github-cli-go-{{ checksum "go.sum" }}-
+            - setup-github-cli-go-
+      - run: task lint
+      - run: task test
+      - save_cache:
+          key: setup-github-cli-go-{{ checksum "go.sum" }}-{{ epoch }}
+          paths:
+            - ~/.cache/go-build
+            - ~/go/pkg/mod
+
+  # Cross-compiles setup-github-cli into ./dist and persists it to the
+  # workspace, so bare-smoke exercises exactly what `publish` is about to ship.
+  build:
+    executor: go
+    steps:
+      - checkout
+      - toolkit/private-mod-init
+      - restore_cache:
+          keys:
+            - setup-github-cli-go-{{ checksum "go.sum" }}-
+            - setup-github-cli-go-
+      - run: task dry-run
+      - persist_to_workspace:
+          root: .
+          paths:
+            - dist
+
+  # Real GitHub releases downloads. Runs on the go executor because the suite
+  # compiles setup-github-cli in TestMain; it installs into temp dirs and
+  # asserts the gh it put on PATH is the one it installed, so a preinstalled gh
+  # can't produce a false pass.
+  acceptance:
+    executor: go
+    steps:
+      - checkout
+      - toolkit/private-mod-init
+      - restore_cache:
+          keys:
+            - setup-github-cli-go-{{ checksum "go.sum" }}-
+            - setup-github-cli-go-
+      - run:
+          name: Run acceptance tests
+          command: task acceptance
+          environment:
+            SETUP_GITHUB_CLI_ACCEPTANCE_VERSION: << pipeline.parameters.gh-version >>
+
+  # The one property that needs an image without gh: the shipped artifact
+  # installs gh from nothing and leaves it on PATH for later steps.
+  bare-smoke:
+    executor: base
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - run:
+          name: Install the GitHub CLI from nothing
+          command: ./dist/setup-github-cli/linux/amd64/setup-github-cli --version << pipeline.parameters.gh-version >>
+      - run:
+          name: Verify gh is on PATH and reports the installed version
+          command: |
+            gh --version
+            gh --version | grep -q "<< pipeline.parameters.gh-version >>"
+
+  publish:
+    executor: go
+    steps:
+      - checkout
+      - toolkit/private-mod-init
+      - restore_cache:
+          keys:
+            - setup-github-cli-go-{{ checksum "go.sum" }}-
+            - setup-github-cli-go-
+      - toolkit/setup-aws-oidc:
+          role_arn: $FUNCTIONS_PUBLISHER_ROLE_ARN
+      - run:
+          name: Extract version from tag
+          command: |
+            VERSION="${CIRCLE_TAG}-$(git rev-parse --short HEAD)"
+            echo "export VERSION=$VERSION" >> "$BASH_ENV"
+      - run:
+          name: Build and publish
+          command: task publish VERSION="$VERSION"
+
+workflows:
+  test-publish:
+    jobs:
+      - test:
+          context: [github-readonly]
+          filters:
+            tags:
+              only: /.*/
+      - build:
+          context: [github-readonly]
+          filters:
+            tags:
+              only: /.*/
+      - acceptance:
+          context: [github-readonly]
+          filters:
+            tags:
+              only: /.*/
+      - bare-smoke:
+          requires: [build]
+          filters:
+            tags:
+              only: /.*/
+      - publish:
+          requires: [test, acceptance, bare-smoke]
+          context: [functions-publisher, github-readonly]
+          filters:
+            tags:
+              only: /^v\d+\.\d+\.\d+$/
+            branches:
+              ignore: /.*/
