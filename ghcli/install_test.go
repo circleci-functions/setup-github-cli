@@ -32,7 +32,7 @@ func TestResolveVersionExplicit(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := ResolveVersion(context.Background(), tc.spec, 0)
+			got, err := ResolveVersion(context.Background(), "", tc.spec, 0)
 			if tc.wantErr {
 				assert.Assert(t, err != nil)
 				return
@@ -45,23 +45,19 @@ func TestResolveVersionExplicit(t *testing.T) {
 
 func TestResolveVersionLatest(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/releases/latest" {
-			http.Redirect(w, r, "/releases/tag/v2.62.0", http.StatusFound)
+		if r.URL.Path == "/cli/cli/releases/latest" {
+			http.Redirect(w, r, "/cli/cli/releases/tag/v2.62.0", http.StatusFound)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
 
-	orig := latestReleaseURL
-	latestReleaseURL = srv.URL + "/releases/latest"
-	t.Cleanup(func() { latestReleaseURL = orig })
-
-	got, err := ResolveVersion(context.Background(), "latest", 2)
+	got, err := ResolveVersion(context.Background(), srv.URL, "latest", 2)
 	assert.NilError(t, err)
 	assert.Equal(t, got, "v2.62.0")
 
-	empty, err := ResolveVersion(context.Background(), "", 2)
+	empty, err := ResolveVersion(context.Background(), srv.URL, "", 2)
 	assert.NilError(t, err)
 	assert.Equal(t, empty, "v2.62.0")
 }
@@ -72,11 +68,7 @@ func TestResolveVersionLatestRetryExhausted(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	orig := latestReleaseURL
-	latestReleaseURL = srv.URL + "/releases/latest"
-	t.Cleanup(func() { latestReleaseURL = orig })
-
-	_, err := ResolveVersion(context.Background(), "latest", 1)
+	_, err := ResolveVersion(context.Background(), srv.URL, "latest", 1)
 	assert.Assert(t, err != nil)
 }
 

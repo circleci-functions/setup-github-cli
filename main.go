@@ -26,13 +26,14 @@ type cli struct {
 	MaxRetries int    `name:"max-retries" help:"Number of retries when resolving the latest GitHub CLI release." default:"5"`
 	InstallDir string `name:"install-dir" help:"Base directory for GitHub CLI installs." default:"~/.cache/setup-github-cli"`
 	BinDir     string `name:"bin-dir" help:"Override the directory gh is symlinked into." hidden:"" default:""`
+	BaseURL    string `name:"base-url" help:"Override the GitHub base URL releases are fetched from." hidden:"" default:""`
 	Configure  bool   `help:"After installing, authenticate gh with a Personal Access Token and configure it for git." default:"false"`
 	Token      string `help:"Name of the environment variable holding the GitHub token. Only used with --configure." default:"GITHUB_TOKEN"`
 	Hostname   string `help:"GitHub hostname to authenticate against. Only used with --configure." default:"github.com"`
 }
 
 func (c *cli) Run(ctx context.Context) error {
-	version, err := ghcli.ResolveVersion(ctx, c.Version, c.MaxRetries)
+	version, err := ghcli.ResolveVersion(ctx, c.BaseURL, c.Version, c.MaxRetries)
 	if err != nil {
 		return fmt.Errorf("resolve version: %w", err)
 	}
@@ -41,6 +42,7 @@ func (c *cli) Run(ctx context.Context) error {
 	ghBin, err := ghcli.EnsureInstalled(ctx, version, ghcli.InstallOptions{
 		InstallDir: expandHome(c.InstallDir),
 		BinDir:     c.BinDir,
+		BaseURL:    c.BaseURL,
 	})
 	if err != nil {
 		return err

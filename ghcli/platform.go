@@ -71,11 +71,12 @@ func (p Platform) Asset(version string) (string, error) {
 	return fmt.Sprintf("gh_%s_%s_%s.%s", num, p.OS, p.Arch, p.extension(version)), nil
 }
 
-// AssetURL returns the download URL for version's asset on this platform.
-func (p Platform) AssetURL(version string) (string, error) {
+// AssetURL returns the download URL for version's asset on this platform, under
+// baseURL (the GitHub base, e.g. "https://github.com").
+func (p Platform) AssetURL(baseURL, version string) (string, error) {
 	asset, err := p.Asset(version)
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("https://github.com/cli/cli/releases/download/%s/%s", version, asset), nil
+	return fmt.Sprintf("%s/cli/cli/releases/download/%s/%s", strings.TrimRight(baseURL, "/"), version, asset), nil
 }

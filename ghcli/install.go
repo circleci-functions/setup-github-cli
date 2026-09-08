@@ -27,14 +27,14 @@ import (
 // steps that do not source $BASH_ENV.
 const DefaultBinDir = "/usr/local/bin"
 
-// latestReleaseURL redirects to the newest gh release's tag page. It is a var so
-// tests can point resolution at a local server.
-var latestReleaseURL = "https://github.com/cli/cli/releases/latest"
+// DefaultBaseURL is the GitHub base the gh releases are fetched from.
+const DefaultBaseURL = "https://github.com"
 
 // ResolveVersion turns a version spec into a concrete semver tag ("v2.37.0").
-// "latest" (or "") is resolved from the releases page, retrying up to maxRetries
-// times; any other spec is normalised to a leading-"v" tag and validated.
-func ResolveVersion(ctx context.Context, spec string, maxRetries int) (string, error) {
+// "latest" (or "") is resolved from baseURL's releases page, retrying up to
+// maxRetries times; any other spec is normalised to a leading-"v" tag and
+// validated.
+func ResolveVersion(ctx context.Context, baseURL, spec string, maxRetries int) (string, error) {
 	if spec != "" && spec != "latest" {
 		v := spec
 		if !strings.HasPrefix(v, "v") {
@@ -46,9 +46,12 @@ func ResolveVersion(ctx context.Context, spec string, maxRetries int) (string, e
 		return v, nil
 	}
 
+	if baseURL == "" {
+		baseURL = DefaultBaseURL
+	}
 	var lastErr error
 	for attempt := 0; attempt <= maxRetries; attempt++ {
-		tag, err := latestTag(ctx)
+		tag, err := latestTag(ctx, baseURL)
 		if err == nil {
 			return tag, nil
 		}
@@ -59,8 +62,9 @@ func ResolveVersion(ctx context.Context, spec string, maxRetries int) (string, e
 
 // latestTag follows the releases/latest redirect and reads the tag from the
 // final URL (.../releases/tag/v2.37.0).
-func latestTag(ctx context.Context) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, latestReleaseURL, nil)
+func latestTag(ctx context.Context, baseURL string) (string, error) {
+	url := strings.TrimRight(baseURL, "/") + "/cli/cli/releases/latest"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", err
 	}
@@ -85,6 +89,9 @@ type InstallOptions struct {
 	InstallDir string
 	// BinDir is where gh is symlinked; DefaultBinDir when empty.
 	BinDir string
+	// BaseURL is the GitHub base assets are downloaded from; DefaultBaseURL
+	// when empty.
+	BaseURL string
 }
 
 // EnsureInstalled installs gh at version (a semver tag) for the current platform
@@ -101,11 +108,15 @@ func EnsureInstalled(ctx context.Context, version string, opts InstallOptions) (
 	if binDir == "" {
 		binDir = DefaultBinDir
 	}
+	baseURL := opts.BaseURL
+	if baseURL == "" {
+		baseURL = DefaultBaseURL
+	}
 
 	ghBin := filepath.Join(opts.InstallDir, version, "bin", "gh")
 	if installedVersion(ghBin) == version {
 		fmt.Fprintf(os.Stderr, "setup-github-cli: gh %s already installed at %s, skipping download\n", version, ghBin)
-	} else if err := install(ctx, plat, version, opts.InstallDir); err != nil {
+	} else if err := install(ctx, plat, baseURL, version, opts.InstallDir); err != nil {
 		return "", err
 	}
 
@@ -135,8 +146,8 @@ func installedVersion(ghBin string) string {
 	return v
 }
 
-func install(ctx context.Context, plat Platform, version, installDir string) error {
-	url, err := plat.AssetURL(version)
+func install(ctx context.Context, plat Platform, baseURL, version, installDir string) error {
+	url, err := plat.AssetURL(baseURL, version)
 	if err != nil {
 		return err
 	}

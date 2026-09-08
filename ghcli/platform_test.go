@@ -66,10 +66,10 @@ func TestPlatformAsset(t *testing.T) {
 }
 
 func TestPlatformAssetURL(t *testing.T) {
-	got, err := Platform{OS: "linux", Arch: "amd64"}.AssetURL("v2.37.0")
+	got, err := Platform{OS: "linux", Arch: "amd64"}.AssetURL("https://github.com", "v2.37.0")
 	assert.NilError(t, err)
 	assert.Equal(t, got, "https://github.com/cli/cli/releases/download/v2.37.0/gh_2.37.0_linux_amd64.tar.gz")
 
-	_, err = Platform{OS: "macOS", Arch: "arm64"}.AssetURL("v2.20.0")
+	_, err = Platform{OS: "macOS", Arch: "arm64"}.AssetURL("https://github.com", "v2.20.0")
 	assert.Assert(t, err != nil)
 }
