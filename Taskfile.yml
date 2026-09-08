@@ -1,0 +1,57 @@
+version: "3"
+
+tasks:
+  default:
+    cmds:
+      - task --list
+    silent: true
+
+  fmt:
+    desc: Format Go code (gofmt + goimports)
+    cmds:
+      - go tool golangci-lint fmt
+
+  lint:
+    desc: Lint Go code (includes go vet via golangci-lint)
+    cmds:
+      - go tool golangci-lint run ./...
+
+  test:
+    desc: Run unit and CLI tests (hermetic, no network)
+    cmds:
+      - go tool gotestsum -- ./...
+
+  acceptance:
+    desc: Run acceptance tests that install the real GitHub CLI (network required; safe to run locally)
+    cmds:
+      - go test -tags acceptance -v -timeout 20m ./acceptance/...
+
+  tidy:
+    desc: Tidy go.mod / go.sum
+    cmds:
+      - go mod tidy
+
+  lint-mod:
+    desc: Check go.mod / go.sum are tidy
+    deps: [tidy]
+    cmds:
+      - git diff --exit-code -- go.mod go.sum
+
+  dry-run:
+    desc: Cross-compile setup-github-cli locally, without uploading
+    cmds:
+      - go tool release --name setup-github-cli --version v0.0.0-dryrun --dry-run
+
+  ci:
+    desc: Run everything CI runs (lint + test + dry-run)
+    cmds:
+      - task: lint
+      - task: test
+      - task: dry-run
+
+  publish:
+    desc: Build and publish setup-github-cli to S3 (VERSION required)
+    requires:
+      vars: [VERSION]
+    cmds:
+      - go tool release --name setup-github-cli --version "{{.VERSION}}"
