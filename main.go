@@ -21,7 +21,7 @@ import (
 )
 
 type cli struct {
-	Version    string `help:"GitHub CLI version to install (a full semver tag, e.g. 2.37.0) or 'latest'." default:"latest"`
+	Version    string `help:"GitHub CLI version to install (a full semver tag, e.g. 2.37.0) or 'latest'." default:"latest" example:"2.37.0"`
 	MaxRetries int    `name:"max-retries" help:"Number of retries when resolving the latest GitHub CLI release." default:"5"`
 	InstallDir string `name:"install-dir" help:"Base directory for GitHub CLI installs." default:"~/.cache/setup-github-cli"`
 	BinDir     string `name:"bin-dir" help:"Link gh into this directory instead of discovering one on PATH." hidden:"" default:""`
@@ -78,7 +78,7 @@ func run(ctx context.Context, client *sdk.Client) error {
 	var flags cli
 	kCtx := kong.Parse(&flags,
 		kong.Name("setup-github-cli"),
-		kong.Description("Install the GitHub CLI (gh), optionally authenticating it with a Personal Access Token.\n\nExample:\n  circleci run github.com/circleci-functions/setup-github-cli@<version> -- --version 2.37.0"),
+		kong.Description("Install the GitHub CLI (gh), optionally authenticating it with a Personal Access Token."),
 		kong.UsageOnError(),
 		functionyaml.Embed(),
 	)
