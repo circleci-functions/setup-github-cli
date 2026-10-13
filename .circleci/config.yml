@@ -90,54 +90,35 @@ jobs:
             gh --version
             gh --version | grep -q "<< pipeline.parameters.gh-version >>"
 
-  publish:
-    executor: go
-    steps:
-      - checkout
-      - toolkit/private-mod-init
-      - restore_cache:
-          keys:
-            - setup-github-cli-go-{{ checksum "go.sum" }}-
-            - setup-github-cli-go-
-      - toolkit/setup-aws-oidc:
-          role_arn: $FUNCTIONS_PUBLISHER_ROLE_ARN
-      - run:
-          name: Extract version from tag
-          command: |
-            VERSION="${CIRCLE_TAG}-$(git rev-parse --short HEAD)"
-            echo "export VERSION=$VERSION" >> "$BASH_ENV"
-      - run:
-          name: Build and publish
-          command: task publish VERSION="$VERSION"
-
 workflows:
   test-publish:
     jobs:
       - test:
           context: [github-readonly]
-          filters:
-            tags:
-              only: /.*/
       - build:
           context: [github-readonly]
-          filters:
-            tags:
-              only: /.*/
       - acceptance:
           context: [github-readonly]
-          filters:
-            tags:
-              only: /.*/
       - bare-smoke:
           requires: [build]
+      - toolkit/release-pr:
+          name: release-pr
+          executor: go
+          cache-prefix: setup-github-cli-go
+          # One at a time, so two pushes can't race to rewrite release/next.
+          serial-group: << pipeline.project.slug >>/release-pr
+          requires: &release-requires [test, acceptance, bare-smoke]
+          context: [github-release]
           filters:
-            tags:
-              only: /.*/
-      - publish:
-          requires: [test, acceptance, bare-smoke]
-          context: [functions-publisher, github-readonly]
-          filters:
-            tags:
-              only: /^v\d+\.\d+\.\d+$/
             branches:
-              ignore: /.*/
+              only: main
+      - toolkit/publish:
+          name: publish
+          executor: go
+          cache-prefix: setup-github-cli-go
+          serial-group: << pipeline.project.slug >>/publish
+          requires: *release-requires
+          context: [functions-publisher, github-release]
+          filters:
+            branches:
+              only: main
