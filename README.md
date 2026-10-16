@@ -42,7 +42,10 @@ shell without sourcing anything.
 With `--configure`, the function authenticates `gh` after installing it: it reads
 the token from the environment variable named by `--token` (default
 `GITHUB_TOKEN`), exports it for later steps, registers `gh` as git's credential
-helper, and disables interactive prompts.
+helper, and disables interactive prompts. The export is a plaintext
+`export GITHUB_TOKEN=<token>` line appended to `$BASH_ENV` (`GH_ENTERPRISE_TOKEN`
+for GitHub Enterprise Server), so anything later in the job that can read that
+file can read the token.
 
 ```yaml
       - run:
