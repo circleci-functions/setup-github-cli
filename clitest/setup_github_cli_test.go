@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"gotest.tools/v3/assert"
@@ -151,4 +152,31 @@ func TestCLI_ConfigureExportsToken(t *testing.T) {
 	assert.NilError(t, readErr)
 	assert.Assert(t, strings.Contains(string(bashEnv), "GITHUB_TOKEN"), "BASH_ENV missing GITHUB_TOKEN: %s", bashEnv)
 	assert.Assert(t, strings.Contains(string(bashEnv), "tok-value"), "BASH_ENV missing token value: %s", bashEnv)
+}
+
+// TestCLI_ConfigureWithoutToken passes a token value where --token wants a
+// variable name, a likely mistake. The step must fail before downloading
+// anything, without printing the value back.
+func TestCLI_ConfigureWithoutToken(t *testing.T) {
+	s, run := sandbox(t)
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+
+	const pasted = "ghp_REALSECRET123"
+	out, err := run(t, nil,
+		"--version", fakeVersion,
+		"--install-dir", s.InstallDir,
+		"--bin-dir", s.BinDir,
+		"--base-url", srv.URL,
+		"--configure",
+		"--token", pasted,
+	)
+	assert.Assert(t, err != nil, "expected non-zero exit; got: %s", out)
+	assert.Assert(t, strings.Contains(out, "not the token itself"), "got: %s", out)
+	assert.Assert(t, !strings.Contains(out, pasted), "output echoes --token: %s", out)
+	assert.Equal(t, requests.Load(), int32(0), "downloaded before checking the token")
 }

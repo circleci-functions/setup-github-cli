@@ -37,10 +37,26 @@ func TestTokenExports(t *testing.T) {
 	}
 }
 
+func TestTokenFromEnv(t *testing.T) {
+	t.Setenv("MY_TOKEN", "tok")
+	got, err := TokenFromEnv("MY_TOKEN")
+	assert.NilError(t, err)
+	assert.Equal(t, got, "tok")
+
+	t.Setenv("EMPTY_TOKEN", "")
+	_, err = TokenFromEnv("EMPTY_TOKEN")
+	assert.ErrorContains(t, err, "unset or empty")
+}
+
+func TestTokenFromEnvDoesNotEchoTheName(t *testing.T) {
+	_, err := TokenFromEnv("ghp_REALSECRET123")
+	assert.ErrorContains(t, err, "not the token itself")
+	assert.Assert(t, !strings.Contains(err.Error(), "ghp_REALSECRET123"), "error echoes --token: %v", err)
+}
+
 func TestConfigureEmptyToken(t *testing.T) {
-	t.Setenv("MY_TOKEN", "")
-	err := Configure(context.Background(), "gh", ConfigureOptions{Hostname: "github.com", TokenEnvVar: "MY_TOKEN"})
-	assert.ErrorContains(t, err, "MY_TOKEN")
+	err := Configure(context.Background(), "gh", ConfigureOptions{Hostname: "github.com"})
+	assert.ErrorContains(t, err, "unset or empty")
 }
 
 func TestConfigureExportsToken(t *testing.T) {
@@ -52,9 +68,8 @@ func TestConfigureExportsToken(t *testing.T) {
 
 	bashEnv := filepath.Join(dir, "bash_env")
 	t.Setenv("BASH_ENV", bashEnv)
-	t.Setenv("MY_TOKEN", "secret-token")
 
-	err := Configure(context.Background(), ghBin, ConfigureOptions{Hostname: "github.com", TokenEnvVar: "MY_TOKEN"})
+	err := Configure(context.Background(), ghBin, ConfigureOptions{Hostname: "github.com", Token: "secret-token"})
 	assert.NilError(t, err)
 
 	data, err := os.ReadFile(bashEnv)
