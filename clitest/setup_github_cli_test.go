@@ -101,9 +101,14 @@ func TestCLI_UnknownFlag(t *testing.T) {
 }
 
 func TestCLI_InvalidVersion(t *testing.T) {
-	_, run := sandbox(t)
-	out, err := run(t, nil, "--version", "not-a-version")
-	assert.Assert(t, err != nil, "expected non-zero exit for invalid version; got: %s", out)
+	for _, spec := range []string{"not-a-version", "2.37"} {
+		t.Run(spec, func(t *testing.T) {
+			_, run := sandbox(t)
+			out, err := run(t, nil, "--version", spec)
+			assert.Assert(t, err != nil, "expected non-zero exit for invalid version; got: %s", out)
+			assert.Assert(t, strings.Contains(out, "use a full X.Y.Z release"), "got: %s", out)
+		})
+	}
 }
 
 func TestCLI_InstallsGh(t *testing.T) {

@@ -28,16 +28,16 @@ const DefaultBaseURL = "https://github.com"
 
 // ResolveVersion turns a version spec into a concrete semver tag ("v2.37.0").
 // "latest" (or "") is resolved from baseURL's releases page, retrying up to
-// maxRetries times; any other spec is normalised to a leading-"v" tag and
-// validated.
+// maxRetries times; any other spec must be a full X.Y.Z release, with or
+// without a leading "v", since that is the only form gh tags its releases with.
 func ResolveVersion(ctx context.Context, baseURL, spec string, maxRetries int) (string, error) {
 	if spec != "" && spec != "latest" {
 		v := spec
 		if !strings.HasPrefix(v, "v") {
 			v = "v" + v
 		}
-		if !semver.IsValid(v) {
-			return "", fmt.Errorf("invalid version %q", spec)
+		if semver.Canonical(v) != v || semver.Prerelease(v) != "" {
+			return "", fmt.Errorf("invalid version %q: use a full X.Y.Z release such as 2.62.0, or \"latest\"", spec)
 		}
 		return v, nil
 	}

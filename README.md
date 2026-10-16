@@ -30,7 +30,7 @@ shell without sourcing anything.
 
 | Flag | Default | Description |
 |---|---|---|
-| `--version` | `latest` | GitHub CLI version to install: a full semver tag (e.g. `2.62.0`) or `latest`. |
+| `--version` | `latest` | GitHub CLI version to install: a full `X.Y.Z` release (e.g. `2.62.0`, with or without a leading `v`) or `latest`. |
 | `--max-retries` | `5` | Retries when resolving the latest release. |
 | `--install-dir` | `~/.cache/setup-github-cli` | Base directory to install `gh` under. |
 | `--configure` | `false` | After installing, authenticate `gh` with a token and configure it for git. |

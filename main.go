@@ -21,7 +21,7 @@ import (
 )
 
 type cli struct {
-	Version    string `help:"GitHub CLI version to install (a full semver tag, e.g. 2.37.0) or 'latest'." default:"latest" example:"2.37.0"`
+	Version    string `help:"GitHub CLI version to install (a full X.Y.Z release, e.g. 2.37.0) or 'latest'." default:"latest" example:"2.37.0"`
 	MaxRetries int    `name:"max-retries" help:"Number of retries when resolving the latest GitHub CLI release." default:"5"`
 	InstallDir string `name:"install-dir" help:"Base directory for GitHub CLI installs." default:"~/.cache/setup-github-cli"`
 	BinDir     string `name:"bin-dir" help:"Link gh into this directory instead of discovering one on PATH." hidden:"" default:""`
