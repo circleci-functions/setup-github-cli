@@ -143,6 +143,43 @@ func TestExtractZip(t *testing.T) {
 	assert.Equal(t, string(gh), "#!/bin/sh\n")
 }
 
+func TestChecksumFor(t *testing.T) {
+	sums := []byte("" +
+		"aaaa  gh_2.62.0_linux_amd64.tar.gz\n" +
+		"BBBB *gh_2.62.0_macOS_arm64.zip\n" +
+		"cccc  gh_2.62.0_linux_amd64.deb\n")
+
+	tests := []struct {
+		name    string
+		asset   string
+		want    string
+		wantErr string
+	}{
+		{name: "listed", asset: "gh_2.62.0_linux_amd64.tar.gz", want: "aaaa"},
+		{name: "binary marker and upper case", asset: "gh_2.62.0_macOS_arm64.zip", want: "bbbb"},
+		{name: "not listed", asset: "gh_2.62.0_linux_arm64.tar.gz", wantErr: "lists no checksum for gh_2.62.0_linux_arm64.tar.gz"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := checksumFor(sums, tc.asset)
+			if tc.wantErr != "" {
+				assert.ErrorContains(t, err, tc.wantErr)
+				return
+			}
+			assert.NilError(t, err)
+			assert.Equal(t, got, tc.want)
+		})
+	}
+}
+
+func TestSHA256File(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "f")
+	assert.NilError(t, os.WriteFile(p, []byte("abc"), 0600))
+	got, err := sha256File(p)
+	assert.NilError(t, err)
+	assert.Equal(t, got, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+}
+
 func TestInstalledVersion(t *testing.T) {
 	skip.If(t, runtime.GOOS == "windows", "fake gh uses a shell script")
 

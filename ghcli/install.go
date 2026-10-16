@@ -5,6 +5,8 @@ import (
 	"archive/zip"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -176,6 +178,10 @@ func install(ctx context.Context, plat Platform, baseURL, version, installDir st
 	}
 	defer os.Remove(archivePath)
 
+	if err := verifyChecksum(ctx, dldr, ChecksumsURL(baseURL, version), path.Base(url), archivePath); err != nil {
+		return err
+	}
+
 	dest := filepath.Join(installDir, version)
 	if strings.HasSuffix(url, ".zip") {
 		err = extractZip(archivePath, dest)
@@ -186,6 +192,60 @@ func install(ctx context.Context, plat Platform, baseURL, version, installDir st
 		return fmt.Errorf("extract: %w", err)
 	}
 	return nil
+}
+
+// verifyChecksum checks the archive at archivePath against the SHA-256 the
+// release lists for asset, so a download corrupted or altered in transit is
+// never extracted. The checksums come from the same release, so this cannot
+// catch a compromised release.
+func verifyChecksum(ctx context.Context, dldr *download.Downloader, checksumsURL, asset, archivePath string) error {
+	sumsPath, err := dldr.Download(ctx, checksumsURL, 0600)
+	if err != nil {
+		return fmt.Errorf("download %s: %w", checksumsURL, err)
+	}
+	defer os.Remove(sumsPath)
+
+	sums, err := os.ReadFile(sumsPath) //nolint:gosec // path is the checksums file this package just downloaded
+	if err != nil {
+		return err
+	}
+	want, err := checksumFor(sums, asset)
+	if err != nil {
+		return err
+	}
+	got, err := sha256File(archivePath)
+	if err != nil {
+		return err
+	}
+	if got != want {
+		return fmt.Errorf("checksum mismatch for %s: got %s, want %s", asset, got, want)
+	}
+	return nil
+}
+
+// checksumFor returns the SHA-256 that sums, in sha256sum's "<hex>  <name>"
+// format, lists for asset.
+func checksumFor(sums []byte, asset string) (string, error) {
+	for line := range strings.Lines(string(sums)) {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && strings.TrimPrefix(fields[1], "*") == asset {
+			return strings.ToLower(fields[0]), nil
+		}
+	}
+	return "", fmt.Errorf("checksums file lists no checksum for %s", asset)
+}
+
+func sha256File(path string) (string, error) {
+	f, err := os.Open(path) //nolint:gosec // path is the archive this package just downloaded
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // stripFirstComponent removes the leading path element of a gh archive entry

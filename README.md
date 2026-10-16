@@ -22,6 +22,11 @@ jobs:
 
 Omit `--version`, or set it to `latest`, to install the newest release.
 
+Before extracting, the function checks the downloaded archive against the SHA-256
+listed in the release's `gh_<version>_checksums.txt`, and fails on a mismatch.
+This catches a download corrupted or altered in transit, not a compromised
+release.
+
 `gh` is made resolvable for later steps by linking it into a directory already on
 `PATH` (`~/.local/bin`, `~/bin`, or `/usr/local/bin`), so it is found in any
 shell without sourcing anything.
