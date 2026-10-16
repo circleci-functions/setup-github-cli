@@ -5,19 +5,32 @@ optionally authenticate it with a Personal Access Token.
 
 ## Usage
 
-Invoke it inside a `run:` step with the full function path. Everything after `--`
-is passed to the function:
+Declare the function in a top-level `functions:` block, then call it as a step.
+Each flag in the table below is a `with:` key, written without its leading `--`:
 
 ```yaml
+functions:
+  setup-github-cli: github.com/circleci-functions/setup-github-cli@<version>
+
 jobs:
   release:
     docker:
       - image: cimg/base:stable
     steps:
-      - run:
-          name: Install the GitHub CLI
-          command: circleci run github.com/circleci-functions/setup-github-cli@<version> -- --version 2.62.0
+      - setup-github-cli:
+          with:
+            version: 2.62.0
       - run: gh --version
+```
+
+`circleci function add setup-github-cli` writes the `functions:` entry for you.
+
+Where the `functions:` block isn't enabled, such as on CircleCI Server, run it
+with `circleci run` and the function's full name. Everything after `--` is passed
+to the function:
+
+```yaml
+      - run: circleci run github.com/circleci-functions/setup-github-cli@<version> -- --version 2.62.0
 ```
 
 Omit `--version`, or set it to `latest`, to install the newest release.
@@ -45,9 +58,9 @@ the token from the environment variable named by `--token` (default
 helper, and disables interactive prompts.
 
 ```yaml
-      - run:
-          name: Install and authenticate the GitHub CLI
-          command: circleci run github.com/circleci-functions/setup-github-cli@<version> -- --configure
+      - setup-github-cli:
+          with:
+            configure: true
       - run: gh pr list
 ```
 
@@ -56,10 +69,11 @@ environment variable. For **GitHub Enterprise Server**, pass `--hostname`; the
 token is then exported as `GH_ENTERPRISE_TOKEN` alongside `GH_HOST`:
 
 ```yaml
-      - run:
-          command: >
-            circleci run github.com/circleci-functions/setup-github-cli@<version> --
-            --configure --hostname github.example.com --token GHE_TOKEN
+      - setup-github-cli:
+          with:
+            configure: true
+            hostname: github.example.com
+            token: GHE_TOKEN
 ```
 
 ## Platform support
