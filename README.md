@@ -23,8 +23,15 @@ jobs:
 Omit `--version`, or set it to `latest`, to install the newest release.
 
 `gh` is made resolvable for later steps by linking it into a directory already on
-`PATH` (`~/.local/bin`, `~/bin`, or `/usr/local/bin`), so it is found in any
-shell without sourcing anything.
+`PATH`, so it is found in any shell without sourcing anything. It prefers
+`~/.local/bin`, then `~/bin`, then `/usr/local/bin`, whichever is on `PATH` and
+writable.
+
+A `gh` already on `PATH` doesn't count unless it is the requested version from
+this install. The new one is linked ahead of it, or, if no preferred directory
+comes first on `PATH`, into that `gh`'s own directory, with the old binary moved
+aside (or replaced with `sudo -n` if the directory is root-owned). If neither
+works, the step fails rather than leave later steps running a different `gh`.
 
 ## Flags
 

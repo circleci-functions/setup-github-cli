@@ -119,7 +119,7 @@ func EnsureInstalled(ctx context.Context, version string, opts InstallOptions) (
 		FromDir:   filepath.Dir(ghBin),
 		Preferred: pathlink.UserBinDirs(),
 		Dir:       opts.BinDir,
-		Verify:    verifyGH,
+		Verify:    verifyGH(filepath.Dir(ghBin), version),
 	})
 	if err != nil {
 		return "", fmt.Errorf("link gh onto PATH: %w", err)
@@ -128,28 +128,45 @@ func EnsureInstalled(ctx context.Context, version string, opts InstallOptions) (
 	return ghBin, nil
 }
 
-// verifyGH confirms the binary PATH resolves is gh, catching a link that points
-// at a lookalike of the same name.
-func verifyGH(bin string) error {
-	out, err := pathlink.Command(bin, "--version").CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("could not report its version: %w", err)
+// verifyGH accepts only the gh in from reporting version, so a gh already on
+// PATH does not pass for it: not an older or newer one, and not a lookalike of
+// the same name.
+func verifyGH(from, version string) func(string) error {
+	want := filepath.Join(from, "gh")
+	return func(bin string) error {
+		out, err := pathlink.Command(bin, "--version").CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("could not report its version: %w", err)
+		}
+		got := parseVersion(string(out))
+		if got == "" {
+			return fmt.Errorf("reports %q, not a gh version", strings.TrimSpace(string(out)))
+		}
+		if got != version {
+			return fmt.Errorf("reports gh %s rather than %s", got, version)
+		}
+		if !sameFile(bin, want) {
+			return fmt.Errorf("is not %s", want)
+		}
+		return nil
 	}
-	if !strings.Contains(string(out), "gh version") {
-		return fmt.Errorf("reports %q, not a gh version", strings.TrimSpace(string(out)))
-	}
-	return nil
 }
 
 // installedVersion returns the semver tag reported by the gh binary at ghBin, or
-// "" if it is absent or unparseable. gh prints "gh version 2.37.0 (2023-...)".
+// "" if it is absent or unparseable.
 func installedVersion(ghBin string) string {
 	out, err := exec.Command(ghBin, "--version").Output()
 	if err != nil {
 		return ""
 	}
-	fields := strings.Fields(string(out))
-	if len(fields) < 3 {
+	return parseVersion(string(out))
+}
+
+// parseVersion returns the semver tag in gh --version output, which reads
+// "gh version 2.37.0 (2023-...)", or "" if out is not that.
+func parseVersion(out string) string {
+	fields := strings.Fields(out)
+	if len(fields) < 3 || fields[0] != "gh" || fields[1] != "version" {
 		return ""
 	}
 	v := "v" + fields[2]
@@ -157,6 +174,12 @@ func installedVersion(ghBin string) string {
 		return ""
 	}
 	return v
+}
+
+func sameFile(a, b string) bool {
+	ra, errA := filepath.EvalSymlinks(a)
+	rb, errB := filepath.EvalSymlinks(b)
+	return errA == nil && errB == nil && ra == rb
 }
 
 func install(ctx context.Context, plat Platform, baseURL, version, installDir string) error {
