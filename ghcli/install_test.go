@@ -26,7 +26,11 @@ func TestResolveVersionExplicit(t *testing.T) {
 	}{
 		{name: "bare semver gets v prefix", spec: "2.37.0", want: "v2.37.0"},
 		{name: "already prefixed", spec: "v2.37.0", want: "v2.37.0"},
-		{name: "major.minor", spec: "2.37", want: "v2.37"},
+		{name: "major.minor", spec: "2.37", wantErr: true},
+		{name: "major only", spec: "v2", wantErr: true},
+		{name: "prerelease", spec: "2.62.0-rc.1", wantErr: true},
+		{name: "build metadata", spec: "2.62.0+meta", wantErr: true},
+		{name: "leading zero", spec: "02.62.0", wantErr: true},
 		{name: "invalid", spec: "not-a-version", wantErr: true},
 	}
 
@@ -34,7 +38,7 @@ func TestResolveVersionExplicit(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := ResolveVersion(context.Background(), "", tc.spec, 0)
 			if tc.wantErr {
-				assert.Assert(t, err != nil)
+				assert.ErrorContains(t, err, "use a full X.Y.Z release")
 				return
 			}
 			assert.NilError(t, err)
