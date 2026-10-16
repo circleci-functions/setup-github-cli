@@ -32,6 +32,14 @@ type cli struct {
 }
 
 func (c *cli) Run(ctx context.Context) error {
+	var token string
+	if c.Configure {
+		var err error
+		if token, err = ghcli.TokenFromEnv(c.Token); err != nil {
+			return err
+		}
+	}
+
 	version, err := ghcli.ResolveVersion(ctx, c.BaseURL, c.Version, c.MaxRetries)
 	if err != nil {
 		return fmt.Errorf("resolve version: %w", err)
@@ -50,8 +58,8 @@ func (c *cli) Run(ctx context.Context) error {
 
 	if c.Configure {
 		if err := ghcli.Configure(ctx, ghBin, ghcli.ConfigureOptions{
-			Hostname:    c.Hostname,
-			TokenEnvVar: c.Token,
+			Hostname: c.Hostname,
+			Token:    token,
 		}); err != nil {
 			return err
 		}

@@ -52,7 +52,8 @@ helper, and disables interactive prompts.
 ```
 
 The token must be available in the job — set it as a project or context
-environment variable. For **GitHub Enterprise Server**, pass `--hostname`; the
+environment variable. If that variable is unset or empty, the step fails before
+installing anything. For **GitHub Enterprise Server**, pass `--hostname`; the
 token is then exported as `GH_ENTERPRISE_TOKEN` alongside `GH_HOST`:
 
 ```yaml

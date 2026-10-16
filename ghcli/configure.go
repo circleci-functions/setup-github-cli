@@ -2,6 +2,7 @@ package ghcli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,21 +15,35 @@ type ConfigureOptions struct {
 	// Hostname is the GitHub host to authenticate against, "github.com" or a
 	// GitHub Enterprise Server hostname.
 	Hostname string
-	// TokenEnvVar is the name of the environment variable holding the token.
-	TokenEnvVar string
+	// Token is the token itself; see TokenFromEnv.
+	Token string
 }
 
-// Configure authenticates gh with the token held in the environment variable
-// named by opts.TokenEnvVar. It exports the token into $BASH_ENV for later job
-// steps, registers gh as git's credential helper, and disables interactive
-// prompts. ghBin is the path to the gh binary to drive.
-func Configure(ctx context.Context, ghBin string, opts ConfigureOptions) error {
-	token := os.Getenv(opts.TokenEnvVar)
+// errNoToken leaves out the variable name it was given: users paste the token
+// itself into --token, and repeating it would print it in the step log.
+var errNoToken = errors.New("--configure: the environment variable named by --token is unset or empty " +
+	"(--token takes the name of a variable, such as GITHUB_TOKEN, not the token itself)")
+
+// TokenFromEnv returns the token held in the environment variable named
+// envVar. Callers check it before installing anything, so a missing token fails
+// the step without a wasted download.
+func TokenFromEnv(envVar string) (string, error) {
+	token := os.Getenv(envVar)
 	if token == "" {
-		return fmt.Errorf("token env var %q is empty", opts.TokenEnvVar)
+		return "", errNoToken
+	}
+	return token, nil
+}
+
+// Configure authenticates gh with opts.Token. It exports the token into
+// $BASH_ENV for later job steps, registers gh as git's credential helper, and
+// disables interactive prompts. ghBin is the path to the gh binary to drive.
+func Configure(ctx context.Context, ghBin string, opts ConfigureOptions) error {
+	if opts.Token == "" {
+		return errNoToken
 	}
 
-	exports := tokenExports(opts.Hostname, token)
+	exports := tokenExports(opts.Hostname, opts.Token)
 	if err := bashenv.ExportEnvVars(exports); err != nil {
 		return fmt.Errorf("export token: %w", err)
 	}
