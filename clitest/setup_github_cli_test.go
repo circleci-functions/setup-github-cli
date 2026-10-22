@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -174,9 +175,14 @@ func TestCLI_UnknownFlag(t *testing.T) {
 }
 
 func TestCLI_InvalidVersion(t *testing.T) {
-	_, run := sandbox(t)
-	out, err := run(t, nil, "--version", "not-a-version")
-	assert.Assert(t, err != nil, "expected non-zero exit for invalid version; got: %s", out)
+	for _, spec := range []string{"not-a-version", "2.37"} {
+		t.Run(spec, func(t *testing.T) {
+			_, run := sandbox(t)
+			out, err := run(t, nil, "--version", spec)
+			assert.Assert(t, err != nil, "expected non-zero exit for invalid version; got: %s", out)
+			assert.Assert(t, strings.Contains(out, "use a full X.Y.Z release"), "got: %s", out)
+		})
+	}
 }
 
 func TestCLI_InstallsGh(t *testing.T) {
@@ -204,6 +210,50 @@ func TestCLI_InstallsGh(t *testing.T) {
 
 	_, statErr = os.Stat(s.BashEnv)
 	assert.Assert(t, os.IsNotExist(statErr), "install must not write $BASH_ENV; it links gh onto PATH")
+}
+
+// TestCLI_LinksAheadOfOlderGh puts a gh of another version on PATH first. It
+// must not count as installed: later steps have to resolve the requested one.
+func TestCLI_LinksAheadOfOlderGh(t *testing.T) {
+	tests := []struct {
+		name string
+		// userBin puts ~/.local/bin on PATH ahead of the older gh.
+		userBin bool
+	}{
+		{name: "links into a user bin dir ahead of it", userBin: true},
+		{name: "takes over its directory", userBin: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s, run := sandbox(t)
+			base := fakeGHRelease(t)
+
+			oldDir := t.TempDir()
+			oldGH := filepath.Join(oldDir, "gh")
+			assert.NilError(t, os.WriteFile(oldGH, []byte("#!/bin/sh\necho 'gh version 2.37.0 (2023-01-01)'\n"), 0700))
+
+			path := []string{oldDir, "/usr/bin", "/bin"}
+			if tc.userBin {
+				userBin := filepath.Join(s.Home, ".local", "bin")
+				assert.NilError(t, os.MkdirAll(userBin, 0750))
+				path = append([]string{userBin}, path...)
+			}
+			pathEnv := strings.Join(path, string(os.PathListSeparator))
+
+			out, err := run(t, map[string]string{"PATH": pathEnv},
+				"--version", fakeVersion,
+				"--install-dir", s.InstallDir,
+				"--base-url", base,
+			)
+			assert.NilError(t, err, "got: %s", out)
+
+			cmd := exec.CommandContext(t.Context(), "sh", "-c", "gh --version")
+			cmd.Env = append(os.Environ(), "PATH="+pathEnv)
+			ghOut, err := cmd.CombinedOutput()
+			assert.NilError(t, err, "got: %s", ghOut)
+			assert.Assert(t, strings.Contains(string(ghOut), "gh version "+fakeVersion), "later steps resolve: %s", ghOut)
+		})
+	}
 }
 
 func TestCLI_ConfigureExportsToken(t *testing.T) {

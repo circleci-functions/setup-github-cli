@@ -26,7 +26,11 @@ func TestResolveVersionExplicit(t *testing.T) {
 	}{
 		{name: "bare semver gets v prefix", spec: "2.37.0", want: "v2.37.0"},
 		{name: "already prefixed", spec: "v2.37.0", want: "v2.37.0"},
-		{name: "major.minor", spec: "2.37", want: "v2.37"},
+		{name: "major.minor", spec: "2.37", wantErr: true},
+		{name: "major only", spec: "v2", wantErr: true},
+		{name: "prerelease", spec: "2.62.0-rc.1", wantErr: true},
+		{name: "build metadata", spec: "2.62.0+meta", wantErr: true},
+		{name: "leading zero", spec: "02.62.0", wantErr: true},
 		{name: "invalid", spec: "not-a-version", wantErr: true},
 	}
 
@@ -34,7 +38,7 @@ func TestResolveVersionExplicit(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := ResolveVersion(context.Background(), "", tc.spec, 0)
 			if tc.wantErr {
-				assert.Assert(t, err != nil)
+				assert.ErrorContains(t, err, "use a full X.Y.Z release")
 				return
 			}
 			assert.NilError(t, err)
@@ -189,19 +193,49 @@ func TestInstalledVersion(t *testing.T) {
 
 	assert.Equal(t, installedVersion(ghBin), "v2.37.0")
 	assert.Equal(t, installedVersion(filepath.Join(dir, "absent")), "")
+
+	notGH := filepath.Join(dir, "git")
+	assert.NilError(t, os.WriteFile(notGH, []byte("#!/bin/sh\necho 'git version 2.40.0'\n"), 0700))
+	assert.Equal(t, installedVersion(notGH), "")
 }
 
 func TestVerifyGH(t *testing.T) {
 	skip.If(t, runtime.GOOS == "windows", "fake gh uses a shell script")
 
-	dir := t.TempDir()
-	ghBin := filepath.Join(dir, "gh")
-	assert.NilError(t, os.WriteFile(ghBin, []byte("#!/bin/sh\necho 'gh version 2.62.0 (2024-01-01)'\n"), 0700))
-	assert.NilError(t, verifyGH(ghBin))
+	fakeGH := func(t *testing.T, output string) string {
+		t.Helper()
+		dir := t.TempDir()
+		assert.NilError(t, os.WriteFile(filepath.Join(dir, "gh"), []byte("#!/bin/sh\necho '"+output+"'\n"), 0700))
+		return dir
+	}
+	ours := fakeGH(t, "gh version 2.62.0 (2024-01-01)")
+	other := fakeGH(t, "gh version 2.62.0 (2024-01-01)")
+	older := fakeGH(t, "gh version 2.37.0 (2023-01-01)")
+	notGH := fakeGH(t, "git version 2.40.0")
 
-	notGH := filepath.Join(dir, "notgh")
-	assert.NilError(t, os.WriteFile(notGH, []byte("#!/bin/sh\necho 'git version 2.40.0'\n"), 0700))
-	assert.ErrorContains(t, verifyGH(notGH), "not a gh version")
+	link := filepath.Join(t.TempDir(), "gh")
+	assert.NilError(t, os.Symlink(filepath.Join(ours, "gh"), link))
 
-	assert.ErrorContains(t, verifyGH(filepath.Join(dir, "absent")), "could not report")
+	tests := []struct {
+		name    string
+		from    string
+		bin     string
+		wantErr string
+	}{
+		{name: "our gh through a link", from: ours, bin: link},
+		{name: "older gh", from: ours, bin: filepath.Join(older, "gh"), wantErr: "reports gh v2.37.0 rather than v2.62.0"},
+		{name: "same version elsewhere", from: ours, bin: filepath.Join(other, "gh"), wantErr: "is not " + filepath.Join(ours, "gh")},
+		{name: "lookalike", from: ours, bin: filepath.Join(notGH, "gh"), wantErr: "not a gh version"},
+		{name: "absent", from: ours, bin: filepath.Join(t.TempDir(), "gh"), wantErr: "could not report"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := verifyGH(tc.from, "v2.62.0")(tc.bin)
+			if tc.wantErr == "" {
+				assert.NilError(t, err)
+				return
+			}
+			assert.ErrorContains(t, err, tc.wantErr)
+		})
+	}
 }

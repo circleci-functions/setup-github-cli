@@ -28,8 +28,15 @@ This catches a download corrupted or altered in transit, not a compromised
 release.
 
 `gh` is made resolvable for later steps by linking it into a directory already on
-`PATH` (`~/.local/bin`, `~/bin`, or `/usr/local/bin`), so it is found in any
-shell without sourcing anything.
+`PATH`, so it is found in any shell without sourcing anything. It prefers
+`~/.local/bin`, then `~/bin`, then `/usr/local/bin`, whichever is on `PATH` and
+writable.
+
+A `gh` already on `PATH` doesn't count unless it is the requested version from
+this install. The new one is linked ahead of it, or, if no preferred directory
+comes first on `PATH`, into that `gh`'s own directory, with the old binary moved
+aside (or replaced with `sudo -n` if the directory is root-owned). If neither
+works, the step fails rather than leave later steps running a different `gh`.
 
 ## How it gets onto PATH
 
@@ -48,7 +55,7 @@ to `sudo -n ln`; on macOS system directories, sudo is skipped.
 
 | Flag | Default | Description |
 |---|---|---|
-| `--version` | `latest` | GitHub CLI version to install: a full semver tag (e.g. `2.62.0`) or `latest`. |
+| `--version` | `latest` | GitHub CLI version to install: a full `X.Y.Z` release (e.g. `2.62.0`, with or without a leading `v`) or `latest`. |
 | `--max-retries` | `5` | Retries when resolving the latest release. |
 | `--install-dir` | `~/.cache/setup-github-cli` | Base directory to install `gh` under. |
 | `--configure` | `false` | After installing, authenticate `gh` with a token and configure it for git. |
