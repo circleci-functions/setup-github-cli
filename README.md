@@ -26,6 +26,19 @@ Omit `--version`, or set it to `latest`, to install the newest release.
 `PATH` (`~/.local/bin`, `~/bin`, or `/usr/local/bin`), so it is found in any
 shell without sourcing anything.
 
+## How it gets onto PATH
+
+A step inherits its environment from the job, not from the step before it, so
+setup-github-cli cannot just prepend to `PATH`. It links `gh` into a directory
+`PATH` already holds, which reaches every later process whatever shell it runs
+in.
+
+The directory is chosen by preference from writable directories already on
+`PATH`. If an older `gh` is already installed in that directory, setup-github-cli
+replaces the link and keeps the old binary as `gh.pathlink-old` in the same
+directory. If the chosen directory is not writable, setup-github-cli falls back
+to `sudo -n ln`; on macOS system directories, sudo is skipped.
+
 ## Flags
 
 | Flag | Default | Description |

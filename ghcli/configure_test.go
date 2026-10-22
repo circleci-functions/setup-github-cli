@@ -62,3 +62,26 @@ func TestConfigureExportsToken(t *testing.T) {
 	assert.Assert(t, strings.Contains(string(data), "GITHUB_TOKEN"))
 	assert.Assert(t, strings.Contains(string(data), "secret-token"))
 }
+
+func TestConfigureTokenQuoting(t *testing.T) {
+	skip.If(t, runtime.GOOS == "windows", "fake gh uses a shell script")
+
+	dir := t.TempDir()
+	ghBin := filepath.Join(dir, "gh")
+	assert.NilError(t, os.WriteFile(ghBin, []byte("#!/bin/sh\nexit 0\n"), 0700))
+
+	bashEnv := filepath.Join(dir, "bash_env")
+	t.Setenv("BASH_ENV", bashEnv)
+	t.Setenv("MY_TOKEN", "secret$(dangerous)token")
+
+	err := Configure(context.Background(), ghBin, ConfigureOptions{Hostname: "github.com", TokenEnvVar: "MY_TOKEN"})
+	assert.NilError(t, err)
+
+	data, err := os.ReadFile(bashEnv)
+	assert.NilError(t, err)
+	assert.Assert(t, strings.Contains(string(data), "'secret$(dangerous)token'"), "token must be single-quoted; got: %s", string(data))
+
+	fi, err := os.Stat(bashEnv)
+	assert.NilError(t, err)
+	assert.Equal(t, fi.Mode().Perm(), os.FileMode(0600), "BASH_ENV must be created with mode 0600")
+}
