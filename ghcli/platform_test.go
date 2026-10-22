@@ -73,3 +73,8 @@ func TestPlatformAssetURL(t *testing.T) {
 	_, err = Platform{OS: "macOS", Arch: "arm64"}.AssetURL("https://github.com", "v2.20.0")
 	assert.Assert(t, err != nil)
 }
+
+func TestChecksumsURL(t *testing.T) {
+	assert.Equal(t, ChecksumsURL("https://github.com/", "v2.62.0"),
+		"https://github.com/cli/cli/releases/download/v2.62.0/gh_2.62.0_checksums.txt")
+}

@@ -78,5 +78,15 @@ func (p Platform) AssetURL(baseURL, version string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("%s/cli/cli/releases/download/%s/%s", strings.TrimRight(baseURL, "/"), version, asset), nil
+	return releaseURL(baseURL, version, asset), nil
+}
+
+// ChecksumsURL returns the URL of the SHA-256 checksums file gh publishes with
+// every release, under baseURL.
+func ChecksumsURL(baseURL, version string) string {
+	return releaseURL(baseURL, version, fmt.Sprintf("gh_%s_checksums.txt", strings.TrimPrefix(version, "v")))
+}
+
+func releaseURL(baseURL, version, file string) string {
+	return fmt.Sprintf("%s/cli/cli/releases/download/%s/%s", strings.TrimRight(baseURL, "/"), version, file)
 }

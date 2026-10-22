@@ -5,6 +5,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"crypto/sha256"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"gotest.tools/v3/assert"
@@ -21,17 +23,34 @@ const fakeVersion = "2.62.0"
 
 // fakeGHRelease starts a server that stands in for GitHub's release hosting: it
 // redirects the "latest" URL to a tag and serves an archive whose bin/gh is a
-// script reporting fakeVersion. It returns the base URL to pass as --base-url.
+// script reporting fakeVersion, plus a checksums file listing its SHA-256. It
+// returns the base URL to pass as --base-url.
 func fakeGHRelease(t *testing.T) string {
+	t.Helper()
+	return fakeGHReleaseWithChecksums(t, nil)
+}
+
+// fakeGHReleaseWithChecksums is fakeGHRelease with the checksums file that
+// checksums builds from the archive, or one listing the archive's real SHA-256
+// when checksums is nil.
+func fakeGHReleaseWithChecksums(t *testing.T, checksums func(archive []byte) string) string {
 	t.Helper()
 
 	ghScript := fmt.Sprintf("#!/bin/sh\ncase \"$1\" in\n  --version) echo 'gh version %s (2024-01-01)' ;;\n  *) exit 0 ;;\nesac\n", fakeVersion)
 	archive := buildArchive(t, ghScript)
+	if checksums == nil {
+		checksums = func(archive []byte) string {
+			return fmt.Sprintf("%x  %s\n", sha256.Sum256(archive), hostAsset())
+		}
+	}
+	sums := checksums(archive)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/cli/cli/releases/latest":
 			http.Redirect(w, r, "/cli/cli/releases/tag/v"+fakeVersion, http.StatusFound)
+		case r.URL.Path == "/cli/cli/releases/download/v"+fakeVersion+"/gh_"+fakeVersion+"_checksums.txt":
+			_, _ = w.Write([]byte(sums))
 		case strings.HasPrefix(r.URL.Path, "/cli/cli/releases/download/"):
 			_, _ = w.Write(archive)
 		default:
@@ -70,6 +89,60 @@ func buildArchive(t *testing.T, ghScript string) []byte {
 	assert.NilError(t, tw.Close())
 	assert.NilError(t, gz.Close())
 	return buf.Bytes()
+}
+
+// hostAsset is the name of the release asset setup-github-cli downloads on this
+// platform.
+func hostAsset() string {
+	if runtime.GOOS == "darwin" {
+		return fmt.Sprintf("gh_%s_macOS_%s.zip", fakeVersion, runtime.GOARCH)
+	}
+	return fmt.Sprintf("gh_%s_linux_%s.tar.gz", fakeVersion, runtime.GOARCH)
+}
+
+// TestCLI_RejectsBadChecksum serves an archive the checksums file does not
+// vouch for. The step must fail without extracting or linking anything.
+func TestCLI_RejectsBadChecksum(t *testing.T) {
+	tests := []struct {
+		name      string
+		checksums func(archive []byte) string
+		wantErr   string
+	}{
+		{
+			name: "mismatch",
+			checksums: func([]byte) string {
+				return fmt.Sprintf("%x  %s\n", sha256.Sum256([]byte("something else")), hostAsset())
+			},
+			wantErr: "checksum mismatch for " + hostAsset(),
+		},
+		{
+			name: "asset not listed",
+			checksums: func(archive []byte) string {
+				return fmt.Sprintf("%x  gh_%s_windows_amd64.zip\n", sha256.Sum256(archive), fakeVersion)
+			},
+			wantErr: "lists no checksum for " + hostAsset(),
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s, run := sandbox(t)
+			base := fakeGHReleaseWithChecksums(t, tc.checksums)
+
+			out, err := run(t, nil,
+				"--version", fakeVersion,
+				"--install-dir", s.InstallDir,
+				"--bin-dir", s.BinDir,
+				"--base-url", base,
+			)
+			assert.Assert(t, err != nil, "expected non-zero exit; got: %s", out)
+			assert.Assert(t, strings.Contains(out, tc.wantErr), "got: %s", out)
+
+			_, statErr := os.Stat(filepath.Join(s.InstallDir, "v"+fakeVersion))
+			assert.Assert(t, os.IsNotExist(statErr), "extracted despite a bad checksum; got: %s", out)
+			_, statErr = os.Lstat(filepath.Join(s.BinDir, "gh"))
+			assert.Assert(t, os.IsNotExist(statErr), "linked despite a bad checksum; got: %s", out)
+		})
+	}
 }
 
 func TestCLI_Help(t *testing.T) {
@@ -151,4 +224,31 @@ func TestCLI_ConfigureExportsToken(t *testing.T) {
 	assert.NilError(t, readErr)
 	assert.Assert(t, strings.Contains(string(bashEnv), "GITHUB_TOKEN"), "BASH_ENV missing GITHUB_TOKEN: %s", bashEnv)
 	assert.Assert(t, strings.Contains(string(bashEnv), "tok-value"), "BASH_ENV missing token value: %s", bashEnv)
+}
+
+// TestCLI_ConfigureWithoutToken passes a token value where --token wants a
+// variable name, a likely mistake. The step must fail before downloading
+// anything, without printing the value back.
+func TestCLI_ConfigureWithoutToken(t *testing.T) {
+	s, run := sandbox(t)
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+
+	const pasted = "ghp_REALSECRET123"
+	out, err := run(t, nil,
+		"--version", fakeVersion,
+		"--install-dir", s.InstallDir,
+		"--bin-dir", s.BinDir,
+		"--base-url", srv.URL,
+		"--configure",
+		"--token", pasted,
+	)
+	assert.Assert(t, err != nil, "expected non-zero exit; got: %s", out)
+	assert.Assert(t, strings.Contains(out, "not the token itself"), "got: %s", out)
+	assert.Assert(t, !strings.Contains(out, pasted), "output echoes --token: %s", out)
+	assert.Equal(t, requests.Load(), int32(0), "downloaded before checking the token")
 }
