@@ -87,9 +87,8 @@ func TestConfigureTokenQuoting(t *testing.T) {
 
 	bashEnv := filepath.Join(dir, "bash_env")
 	t.Setenv("BASH_ENV", bashEnv)
-	t.Setenv("MY_TOKEN", "secret$(dangerous)token")
 
-	err := Configure(context.Background(), ghBin, ConfigureOptions{Hostname: "github.com", TokenEnvVar: "MY_TOKEN"})
+	err := Configure(context.Background(), ghBin, ConfigureOptions{Hostname: "github.com", Token: "secret$(dangerous)token"})
 	assert.NilError(t, err)
 
 	data, err := os.ReadFile(bashEnv)
