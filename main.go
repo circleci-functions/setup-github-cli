@@ -86,7 +86,7 @@ func run(ctx context.Context, client *sdk.Client) error {
 	var flags cli
 	kCtx := kong.Parse(&flags,
 		kong.Name("setup-github-cli"),
-		kong.Description("Install the GitHub CLI (gh), optionally authenticating it with a Personal Access Token."),
+		kong.Description("Install the GitHub CLI (gh), optionally authenticating it with a Personal Access Token. Use this function instead of the circleci/github-cli orb."),
 		kong.UsageOnError(),
 		functionyaml.Embed(),
 	)
