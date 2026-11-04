@@ -3,6 +3,8 @@
 Install the [GitHub CLI](https://cli.github.com/) (`gh`) in a CircleCI job, and
 optionally authenticate it with a Personal Access Token.
 
+Use this function instead of the `circleci/github-cli` orb.
+
 ## Usage
 
 Declare the function in a top-level `functions:` block, then call it as a step.
