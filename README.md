@@ -27,14 +27,6 @@ jobs:
 
 `circleci function add setup-github-cli` writes the `functions:` entry for you.
 
-Where the `functions:` block isn't enabled, such as on CircleCI Server, run it
-with `circleci run` and the function's full name. Everything after `--` is passed
-to the function:
-
-```yaml
-      - run: circleci run github.com/circleci-functions/setup-github-cli@<version> -- --version 2.62.0
-```
-
 Omit `--version`, or set it to `latest`, to install the newest release.
 
 Before extracting, the function checks the downloaded archive against the SHA-256
